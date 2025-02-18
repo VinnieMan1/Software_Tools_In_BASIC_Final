@@ -1,0 +1,189 @@
+PseudoCode Aliases
+==================
+
+#defines
+--------
+
+#define	FAIL			0
+#define SUCCESS			-1
+#define	LF			CHR$( 10)
+#define RECORD_END		256
+#define	KEYBOARD		FN KY%( 0)
+#define SCREEN			FN SC%( 0)
+#define PRINTER			FN PR%( 0)
+#define STDIN			StdSlot[1]
+#define STDOUT			StdSlot[2]
+#define STDERR			StdSlot[3]
+#define INPUT_MODE		1
+#define OUTPUT_MODE		2
+#define RANDOM_MODE		3
+#define GETC_MODE		4
+#define PUTC_MODE		5
+#define APPEND_MODE		6
+#define puts( string, f)	putc( string, f)
+#define	DCB_START		FN D0( 0)
+#define DCB_SIZE		FN D1( 0)
+
+
+PseudoCode		SKELETON ref	Notes:
+----------		------------	------
+
+argc			SY%(0,0)
+argv[n]			AV$(n)
+Buffer$[file#]		SY$(n,1)	stored in temp X9$
+CharPos[file#]		SY%(n,2)	FIELD CharPos AS Spacer$
+CommandLine$		SY$(0,0)	command line with args. See ioStream$, below.
+CommandLineFileName	SY$(15,0)	CMDLINE/SH
+CurrentCharCount[file#]	SY!(n,0)	
+CurrentCursor		SY%(13,0)	AKA "CC%"
+DebugLevel		D0		default level 1. Can be tested when debugging
+e$			VA$(10)		Error messages typically
+					built in VA$(10)
+ErrorFname$		VA$(5)		Error msg function name
+ErrorType$		VA$(6)		Error msg type
+ExitAfterUsage		SY%(6,0)	flag
+file#			VA%(0)		file or device code
+FilesOpen		SY%(5,0)	total files fOpen()ed
+GetcIsByteStream	SY%(4,0)	
+ioStream$[]		SY$(0..3,0)	first 4 lines of CMDLINE/SH; see CommandLine$,
+						above
+KbdByteStreamEOF$	SY$(5,0)	default: [Shift][UpArrow]
+KbdTextStreamEOF$	SY$(6,0)	default: "."
+newline$		CHR$( 13)	TRS-80 newline= CR
+MatchFlag		VA%(2)		
+MoreToScan		SY%(11,0)	AKA "MR%", "More"
+			VR%(1)		also see MoreToScan
+NextRec#		X9!		temporary variable
+OpenType[file#]		SY%(n,1)	
+Result			VR%(0)		SUCCESS/FAIL
+RecordCount[file#]	SY!(n,1)	*next* record to
+						-- GET in getc()
+						-- PUT in Append()
+Return$			VR$(0)		
+ScanResult		SY%(12,0)	SUCCESS/FAIL
+					AKA "SC%"
+SelectionLength		SY%(15,0),	AKA "SL%"
+			VR%(2)		
+Spacer$			X9$		temporary variable
+StdSlot[n]		SY%(n,0)	n in 1..3
+TotalCharCount[file#]	SY!(n,2)	
+UpTo			SY%(14,0)	Scanning Upper limit
+			VA%(1)		AKA "UT%"
+Whitespace		SY$(11,0)	character set
+
+
+Skeleton refs
+=============
+
+SKELETON ref		PseudoCode		Value(s)	Note(s)
+------------		----------		--------	-------
+
+File Details (by file#):
+...........................
+
+SY%(file#,1)		OpenType[file#]		1..6
+SY%(0,2)		CharPos[keyboard]	1..256		for keyboard
+SY%(file#,2)		CharPos[file#]		0..256		for disk
+						1..256		for keyboard
+SY!(file#,0)		CurrentCharCount[file#]	0..EOF
+SY!(file#,1)		RecordCount[file#]	0..EOF		next record to--
+								-GET in disk getc()
+								when 256 chars read in or
+								after file OPENed.
+								-PUT in disk append putc()
+								when sector full or
+								file to be CLOSEd.
+SY!(file#,2)		TotalCharCount[file#]	0..EOF		for disk only
+SY$(0,1)		Buffer$[0]				for keyboard
+SY$(file#,1)		Buffer$[file#]		""..256 chars
+
+SY%(5,0)		FilesOpen		0..FN DN%( 0)	# of files fOpen()ed
+
+std i/o
+.......
+SY%(n,0)		StdSlot[n]		1..3		stdin, stdout, stderr
+
+Command-line arguments
+......................
+SY%(0,0)		argc			0..# of args	returned by FN AC%( 0)
+AV$(0..FN AC%(0))	argv[]
+SY$(0,0)		CommandLine$		command line with args.
+SY$(0..3,0)		ioStream$[]		first 4 lines of CMDLINE/SH
+
+I/O
+...
+SY%(4,0)		GetcIsByteStream	0:	Text Stream
+						-1:	Byte Stream
+
+Common Function Arguments	[ VA() vectors ]
+.........................
+VA%(0)			file#					in I/O
+			CurrentCursor				in String Scanning
+VA%(1)			UpTo					in String Scanning
+VA%(2)			MatchFlag				in String Scanning
+VA$(0)			char or string to output		to putc()
+VA$(5)			ErrorFname$				to fOpenErrorReport()
+VA$(6)			ErrorType$				to fOpenErrorReport()
+VA$(10)			e$					to PutErr()
+
+Common Function Returns		[ VR() vectors ]
+.......................
+VR%(0)			Result					SUCCEED / FAIL
+VR%(1)			MoreToScan				String Scanning
+VR%(2)			SelectionLength				String Scanning
+VR$(0)			Return$
+
+Scanning State Variables (SSVs)
+...............................
+SY%(11,0)		MoreToScan		0/-1		AKA "MR%", "More"
+SY%(12,0)		ScanResult		SUCCESS/FAIL	AKA "SC%"
+SY$(11,0)		Whitespace				character set
+SY%(13,0)		CurrentCursor				AKA "CC%"
+SY%(14,0)		UpTo					AKA "UT%"
+SY%(15,0)		SelectionLength				AKA "SL%"
+
+Scanning Character Sets
+.......................
+SY$(8,0)		Numeric
+SY$(9,0)		Uppercase
+SY$(10,0)		Lowercase
+SY$(11,0)		Whitespace
+SY$(14,0)		User-defined set
+
+Misc System Globals
+...................
+
+SY%(6,0)		ExitAfterUsage		0/-1
+SY$(15,0)		CommandLineFileName$	CMDLINE/SH
+D0			DebugLevel		default level: 1
+
+Temp Variable Usage
+...................
+X0
+X1%			fOpen()			mode#
+X2
+X3%			AppendOpen(),		[used in ConvertCharCount]
+			ConvertCharCount()	used to calculate Offset, Spacer
+X4%			putc(),			index into VA$(0)
+			puts();
+			SaveSSVs(),		index into SSV stack frames
+			RestoreSSVs();
+			WordPoke()		index into val
+X5%			getc()			loop control in byte-stream kbd input
+			putc(),			file#
+			puts(),
+			fcloseAll();
+			SaveSSVs(),		stack pointer
+			RestoreSSVs();
+			WordPoke()		signed int version of val
+[			InitCharSets()		index in subroutine @ 60010] 
+X5$			WordPoke()		2-char cast of val
+X6%			SaveSSVs(),		stack frame size
+			RestoreSSVs();
+[			InitCharSets();		index in subroutine @ 60010
+			InitStdFiles()		value of reassigned std stream] 
+X7%			Append()		CharPos[file#]
+[			InitCharSets();		ASCII value of 1st char in set
+			InitStdFiles()		stream # to init]
+X7!			AppendOpen()		TotalCharCount[file#]
+X7$			Append()		Spacer$

@@ -1,0 +1,1565 @@
+Skeleton in PseudoCode
+++++++++++++++++++++++
+
+Development Notes & TBD
+=======================
+
+1.	Needs an fclose(), particularly for
+		- disk files opened in Append mode
+		- cassette files opened for Write
+2.	putc() for cassette (text mode only)
+3.	getc() for cassette (text mode only)
+
+PseudoCode
+**********
+
+#define	FAIL			0
+#define SUCCESS			-1
+#define	LF			CHR$( 10)
+#define RECORD_END		256
+#define	KEYBOARD		FN KY%( 0)
+#define SCREEN			FN SC%( 0)
+#define PRINTER			FN PR%( 0)
+#define STDIN			StdSlot[1]
+#define STDOUT			StdSlot[2]
+#define STDERR			StdSlot[3]
+#define	CLOSED_MODE		0		/* AKA "available" file slot	*/
+#define INPUT_MODE		1
+#define OUTPUT_MODE		2
+#define RANDOM_MODE		3
+#define GETC_MODE		4
+#define PUTC_MODE		5
+#define APPEND_MODE		6
+#define puts( string, f)	putc( string, f)
+#define	DCB_START		FN D0( 0)
+#define DCB_SIZE		FN D1( 0)
+
+/*
+	I/O
+	===
+
+	User Routines
+	+++++++++++++
+*/
+
+getc( file#) {			/* Read 1 char/byte from file #				*/
+/*   VA%(0)
+		Temp variables:
+		X9%	=VA%(0)		file#
+*/
+	Result= FAIL;
+	/* "VR%(0)= 0: X9%= VA%(0):"						2000a	*/
+	if !(file# < 0) {
+	/* "IF X9% < 0 THEN 2050"						2000b	*/
+		/* Disk file					*/
+		if (!OpenType[file#] == "G")
+		/* "IF NOT SY%(X9%,1) = 4"						*/
+			return;
+			/* "RETURN"	not "getc()" OPEN type, so exit.	2002	*/
+		if (GetcIsByteStream) {
+		/* "IF NOT SY%(4,0) THEN 2020"					2004	*/
+			/*
+			 ** Byte-Stream getc()
+			*/
+			while (Result=
+			  (CurrentCharCount[file#] < TotalCharCount[file#]) {
+			  /* "VR%(0)= SY!(X9%,0) < SY!(X9%,2):
+					IF NOT VR%(0) RETURN"			2006	*/
+				if (CharPos[file#] == RECORD_END) {
+				/* "IF SY%(file#,2) = 256"			2008a	*/
+					NextRec#= RecordCount[file#];
+					/* "X9!= SY!(X9%,1)"			2008b	*/
+					GET file#, NextRec#;
+					/* "GET X9%, X9!"			2008c	*/
+					CharPos[file#]= 0;
+					/* "SY%(X9%,2)= 0"			2008d	*/
+					RecordCount[file#]++;
+					/* "SY!(X9%,1)= X9! + 1"		2008e	*/
+					}
+					/* "GOTO 2006"				2008f	*/
+				else {
+					/* temp8= CharPos; "X8%= SY%(X9%,2):"	2010a	*/
+					FIELD file#, CharPos[file#] AS Spacer$,
+					  1 AS ReturnChar$;
+					/* "FIELD X9%, X8% AS X9$,
+					  1 AS VR$(0):"				2010b	*/
+					CharPos[file#]++;
+					/* "SY%(X9%,2)= X8% + 1:"		2010c	*/
+					CurrentCharCount[file#]++;
+					/* "SY!(X9%,0)= X8% + 1"		2010d	*/
+					return;
+					/* "RETURN"				2010e	*/
+					}
+				}
+			}
+		else {		/* "IF NOT SY%(4,0) THEN 2020			2004	*/
+			/* 
+			 **	Text-Stream getc()
+			*/
+			Temp9$= Buffer$[file#]; 
+			/* "X9$= SY$(X9%,1)"					2020a	*/
+			while (CharPos[file#] > LEN( Buffer$[file#] {
+			/* "IF NOT SY%(X9%,2) > LEN( X9$) THEN 2030"		2020b	*/
+				if (EOF( file#))
+					return;	
+				/* “IF EOF( X9%) RETURN”			2024	*/
+				LINEINPUT# file#, Temp9$;
+				/* “LINE INPUT #X9%, X9$:”			2026a	*/
+				Buffer$[file#]= Temp9$ + newline$;
+				/* “SY$(X9%,1)=X9$+FNNL$(0):”			2026b	*/
+				CharPos[file#]= 1;
+				/* “SY%(X9%,2)= 1:”				2026c	*/
+				}
+				/* "GOTO 2020"					2026d	*/
+			Return$= MID$( Buffer$[file#], CharPos[file#], 1);
+			/* "VR$(0)= MID$( X9$, SY%(X9%,2), 1):"			2030a	*/
+			CharPos[file#]++;
+			/* "SY%(X9%,2)= SY%(X9%,2) + 1:"			2030b	*/
+			CurrentCharCount[file#]++;
+			/* "SY!(X9%,0)= SY!(X9%,0) + 1:"			2030c	*/
+			Result= !(CurrentCharCount[file#] > TotalCharCount[file#]);
+			/* "VR%(0)= NOT (SY!(X9%,0) > SY!(X9%,2))"		2030d	*/
+			/* Result= SUCCESS if not at EOF	*/
+			if (!Result)
+				DefaultFileParams( file#);
+				/* "IF NOT VR%(0) GOSUB 60700"			2030e	*/
+			}
+			/* "RETURN"						2032	*/
+		}
+	else {
+		/*
+		** Keyboard getc()
+		*/
+		if (file# == KEYBOARD) {
+		/* "IF NOT X9% = FNKY%(0) RETURN"				2050	*/
+			if (GetcIsByteStream) {
+			/* "IF SY%(4,0)"					2052a	*/
+				Return$= FastByteStreamKbdGetc();
+				/* "GOSUB 1900:"				2052b	*/
+				Result= !(Return$ == KbdByteStreamEOF$;
+				/* "VR%(0)= NOT VR$(0) = SY$(5,0): RETURN"	2052c	*/
+				}
+			else {
+				/* Text-Stream:	*/
+				if (CharPos[file#] > LEN( Buffer$[0])) {
+				/* "IF NOT SY%(0,2) > LEN( SY$(0,1)) THEN 2070"	2062	*/
+					LINE INPUT Buffer$[0];
+					/* "LINE INPUT X9$:"			2064a	*/
+					if (Buffer$[0] == KbdTextStreamEOF$) {
+					/* "IF X9$ = SY$(6,0) THEN"		2064b	*/
+						Return$= "";
+						/* 'VR$(0)= "":'		2064c	*/
+						ResetKeyboard();
+						/* "GOSUB 60800:"		2064d	*/
+						return;
+						/* "RETURN"			2064e	*/
+						}
+					Buffer$[0]= Buffer$[0] + newline$;
+					/* "SY$(0,1)= X9$ + CHR$(13):"		2066a	*/
+					CharPos[file#]= 1;
+					/* "SY%(0,2)= 1"			2066b	*/
+					}
+				Return$= MID$( Buffer$[0], CharPos[file#], 1);
+				/* "VR$(0)= MID$( SY$(0,1), SY%(0,2), 1):"	2070a	*/
+				CharPos[file#]++;
+				/* "SY%(0,2)= SY%(0,2) + 1:"			2070b	*/
+				Result= SUCCESS;
+				/* "VR%(0)= -1:"					2070c	*/
+				}
+				/* "RETURN"					2070d	*/
+			}
+		}
+	}
+
+
+getchar() {			/* Read 1 char/byte from stdin			2100	*/
+	getc( StreamTranslate( STDIN));
+	/* "VA%(0)= FN ST%( SY%(1,0)): GOTO 2000"	*/
+	}
+
+
+FastByteStreamKbdGetc() {	/* get 1 keypress					*/
+	for (temp9= 0; ; temp9+= 0) {
+	/* "FOR X5%= 0 TO 1 STEP 0:"						1900a	*/
+		key$= INKEY$;
+		/* "X9$= INKEY$:"						1900b	*/
+		if LEN( key$) > 0 {
+		/* "IF LEN( X9$) > 0 THEN"					1900c	*/
+			return key$;
+			/* "VR$(0)= X9$: X5%= 1"				1900d	*/
+			}
+		}
+		/* "NEXT:"							1902a	*/
+	}
+	/* "RETURN"								1902b	*/
+
+putNum( Num, Width, file#) {	/* Right-justify Num in Width field, and
+	VA!(0),				print to file#				60300
+	     VA%(1),
+		    VA%(0)	*/
+	puts( Fmt_Num( Width, Num), file#);	
+	/* "GOSUB 5800: VA$(0)= VR$(0): GOSUB 60100"				60300	*/
+	}
+
+
+putDec( Num, Width) {		/* Right-justify Num in Width field, and
+	VA!(0),				print to stdout				60350
+		VA%(0)	*/
+	putNum( Num, Width, StreamTranslate( STDOUT));
+	/* "VA%(0)= FN ST%( SY%(2,0)): GOTO 60100"		*/
+	}
+
+
+putc( 	c$, file#) {	/* write char or string c$ on device or disk file#	2200	*/
+/*	VA$(0),
+	    VA%(0)	*/	
+	if (file# > 0) {
+	/* "X5%= VA%(0): IF X5% < 1 THEN 2250"					2200	*/
+		/* disk file 		*/
+		/* DiskPutc( c$, file#)	*/
+		if (OpenType[file#] == APPEND_MODE {
+		/* "IF SY%(X5%,1) <> 6 THEN"					2202a	*/
+			/* "X9$= VA$(0):"					2210a	*/
+			for (p= 1; p <= LEN( c$); p++)
+			/* "FOR X4%= 1 TO LEN( X9$):"				2210b	*/
+				Append( c$[p], file#);
+				/* VA$(0)= MID$( X9$, X4%, 1): GOSUB 2500:
+					NEXT: RETURN"				2210b	*/
+			}
+		else {
+			/* "ELSE" -- "P" mode								*/
+			PRINT# file#, c$;
+			/* "PRINT# VA%(0), VA$(0): RETURN"			2202b	*/
+			}
+		return;
+		}
+	if (file# == SCREEN) {
+	/* "IF X5% = FN SC%( 0)"						2250a	*/
+		PRINT c$;
+		/* "PRINT VA$(0);: RETURN"					2250b	*/
+		return;
+		}
+	if (file# == PRINTER) {
+	/* "IF X5% = FN PR%( 0)"						2255a	*/
+		LPRINT c$;
+		/* "LPRINT VA$(0);": RETURN"					2255b	*/
+		return;
+		}
+	/* "' FOR NOW: INSERT TESTS FOR CAS1..2, RS-232 LATER"			(2260..)/* 
+	}
+
+
+/*
+puts(	c$, file#)	is #defined as a synonym for putc( c$, file#), above
+*/
+
+
+putchar(	c$) {	/* write char or string c$ on stdout			60200	*/
+/*		VA$(0)	*/
+	putc( c$, StreamTranslate( STDOUT));
+	/* "VA%(0)= FN ST%( SY%(2,0)): GOTO 60100"	*/
+	}
+
+
+fOpen( filename$, opt mode$, opt mode#, opt file#) {
+/*	VA$(0),		VA$(1),	 VA%(1),    VA%(0)	*/
+	/* OPEN disk file with filename$ for OpenType specified either as
+		a) one of "IORGPA" in mode$; or
+		b) a corresponding value of 1..6 in mode#
+		in FD/buffer file#.
+			If file# is set to 0, fOpen() will assign a file#.
+		Temporary variables:
+			X1%	=VA%(1)		mode#
+			X3%	=VR%(1)		save file#		in 60660
+			X8%			index into OpenType[]
+			X9%	=VA%(0)		file#
+	*/
+	Result= FAIL;
+	/* "VR%(0)= 0: X1%= VA%(1): X9%= VA%(0)"				60500a	*/
+	if (file# < 0)
+	/* "IF X9% < 0 THEN"							60500b	*/
+		return;
+		/* "RETURN"	only fOpen() disk files				60500c	*/
+	else
+	/* "ELSE "								60500d	*/
+		ErrorFname$= "OPEN";
+	/* 	'VA$(5)= "OPEN"'						60500e	*/
+	/*
+		"1. ROOM FOR ANOTHER FILE?"
+	*/
+	if (! FilesOpen < MaxOpenFiles()) {
+		"IF X9% > FN DN%( 0) THEN					60505a	*/
+		ErrorType$= "NO ROOM";
+		/* 'VA$(6)= "NO ROOM":'						60605b	*/
+		fOpenErrorReport( ErrorFname$, ErrorType$, file#);
+		/* "GOSUB 60951: RETURN" --assumes VA%(0) still holds file#	60505c	*/
+		return;
+		}
+	/*
+		"2. INCREMENT OPEN FILE COUNT"
+	*/
+	FilesOpen++;
+	/* "SY%(5,0)= SY%(5,0) + 1:						60510a	*/
+	if (file# == 0) {
+	/* "IF NOT X9% = 0 THEN 60520"						60510b	*/
+		/*
+			"3. DO WE NEED TO HAVE A FD# ASSIGNED?
+				CYCLE THRU FD#S, LOOKING FOR EMPTY SLOT"
+		*/
+		for (s= 1 to FilesOpen; ; s++) {
+		/* "FOR X8%= 1 TO SY%(5,0):"					60512a	*/
+			if (OpenType[s] == 0) {
+			/* "IF SY%(X8%,1)=0 THEN"				60512b	*/
+				file#= s;
+				/* "X9%= X8%:"					60512c	*/
+				break;
+				/* "GOTO 60520"					60512d	*/
+				}
+			}
+			/* "NEXT:"						60514a	*/
+		if (file# == 0) {
+			/* was not able to assign	*/
+			ErrorType$= "NO ROOM TO OPEN";
+			/* 'VA$(6)= "NO ROOM TO OPEN":'				60514b	*/
+			fOpenErrorReport( ErrorFname$, ErrorType$, file#);
+			/* "GOSUB 60950:"					60514c	*/
+			return;
+			/* "RETURN"						60514d	*/
+			}
+		}
+	/*
+	   "4. DOES FD# MATCH AN ALREADY-OPEN FILE?
+	*/
+	if IsValidMode( OpenType[file#]) {
+	/* "IF FN DF%( SY%(VA%(0),1)) THEN"					60520a	*/
+		ErrorType$= "ALREADY IN USE";
+		fOpenErrorReport( ErrorFname$, ErrorType$, file#);
+		/* 'VA$(6)= "ALREADY IN USE": GOSUB 60950'			60520b	*/
+		return;
+		/* "RETURN"							60520c	*/
+		}
+	/*
+	   'CONFIRM "OPEN" MODE
+		A. DOES VA%(1) CONTAIN VALID MODE?'
+	*/
+	if !IsValidOpenMode( mode#) {
+	/* "IF NOT FN DF%( X1%) THEN"						60525a	*/
+		mode#= INSTR( "IORGPA", toUpper( mode$));
+		/* where mode$ is in set "IORGPA" becomes mode#				*/
+		/* 'X1%= INSTR( "IORGPA", CHR$( FN TU%( ASC( VA$(1)))))'	60525b	*/
+		}
+	/*
+		"B. IS IT VALID NOW?"
+	*/
+	if (!IsValidOpenMode( mode#) {
+	/* "IF NOT FN DF%( X1%) THEN"						60530a	*/
+		ErrorType$= "NOT VALID 'OPEN' MODE";
+		fOpenErrorReport( ErrorFname$, ErrorType$, file#);
+		/* 'VA$(6)= "NOT VALID 'OPEN' MODE": GOSUB 60950'		60530b	*/
+		return;
+		/* "RETURN"							60530c	*/
+		}
+	Return= file#;
+	/* "VR%(1)= X9%"	Return value in VR%(1) is file# from X9%/VA%(0)	60532	*/
+	/*
+	   "6. SET UP EXCEPTION IF FILE DOESN'T EXIST"
+	*/
+	ErrorTrap( 65500);
+	/* "ON ERROR GOTO 65500"						60534	*/
+	/*
+	   "7. OPEN THE FILE"
+	*/
+	switch( mode#) {
+	/* "ON X1% GOTO 60610, 60620, 60630, 60640, 60650, 60660:"		60540a	*/
+		case INPUT_MODE:
+			/* '7A. OPEN "I"'	*/
+			OPEN "I", file#, filename$;
+			/* 'OPEN "I", VA%(0), VA$(0)'				60610	*/
+			break;
+			/* "GOTO 60700"		*/
+		case OUTPUT_MODE:
+			/* '7B. OPEN "O"	*/
+			OutputOpen( file#);
+			/* GOSUB 60840: IF VR%(0) THEN 60700"		60840 <-60620	*/
+			break;
+			/* "GOTO 60700"		*/
+		case RANDOM_MODE:
+			/* '7C. OPEN "R''	*/
+			OPEN "R", file#, filename$;
+			/* 'OPEN "R", VA%(0), VA$(0):'				60630	*/
+			break;
+			/* "GOTO 60700"		*/
+		case GETC_MODE:
+			/* '7D. OPEN "G"	*/
+			if GetcIsByteStream
+			/* "IF SY%(4,0) THEN"					60640a	*/
+				OPEN "R", file#, filename$;
+				/* "60630" (see case 3: above)			60640b	*/
+			else
+				OPEN "I", file#, filename$;
+				/* "ELSE 60610" (see case 1: above)		60640c	*/
+			break;
+		case PUTC_MODE:
+			/* '7E. OPEN "P"	*/
+			OPEN "O", file#, filename$;
+			/* "GOTO 60620"						60650	*/
+			break;
+		case APPEND_MODE:
+			/* '7F. OPEN "A"'	*/
+			AppendOpen( file#);
+			/* "GOSUB 60830: IF VR%(0) THEN RETURN"			60660a	*/
+			if (!Result) {
+				fOpenErrorReport( ErrorFname$,
+					"'A'PPEND MODE: CAN'T OPEN", file#);
+				/* "ELSE 60690"					60660b	*/
+				}
+	
+		default:
+			ErrorType$= "CAN'T OPEN IN MODE '" + 
+				MID$( "IORGPA", mode#, 1) + "'";
+			fOpenErrorReport( ErrorFname$, ErrorType$, file#);
+			return;
+			/* "VA$(6)= "CAN'T OPEN IN MODE '" +
+				MID$( "IORGPA", X1%, 1) + "'":
+				GOSUB 60950: RETURN"			60950<-	60690	*/
+		}
+	
+	OpenType[file#]= mode#;
+	/* "X9%= VA%(0): SY%(X9%,1)= X9%:"					60700a	*/
+	CurrentCharCount[file#]= 0;
+	/* "SY!(X9%,0)= 0:"							60700b	*/
+	RecordCount[file#]= 1;
+	/* "SY!(X9%,1)= 1:"							60700c	*/
+	TotalCharCount[file#]= TotalBytes( file#);
+	/* "SY!(X9%,2)= FN DX!( X9%):"						60700d	*/
+	ResetDiskBuffer();
+	/* "GOSUB 60810"							60700e	*/
+	return SUCCEED;
+	/* "VR%(0)= -1: RETURN"							60790	*/
+	}
+
+
+fCloseAll() {	/* close all open files, preparatory to exiting				*/
+	for (f= 1; f < MaxOpenFiles(); f++) {
+	/* "FOR X5%= 1 TO FN DN%( 0):"						60920a	*/
+		fClose (f);
+		/* "VA%(0)= X5%: GOSUB 60910"					60920b	*/
+		}
+		/* "NEXT:"							60920c	*/
+	}
+	/* "RETURN"								60920d	*/
+
+fClose( file#) {	/* close file#							*/
+/*	VA%(0)										*/
+	if ((mode= OpenType[file#]) < INPUT_MODE)
+	/* "X9%= VA%(0): X8%= SY%(X9%,1): IF X8% < 1 RETURN"			60910	*/
+		return;
+	if (IsValidMode( mode)) {
+	/* "IF FN DF%( X8%) THEN"						60912a	*/
+		if mode == APPEND_MODE
+		/* "IF X8% = 6 THEN"						60912b	*/
+			AppendClose( file#);
+			"GOSUB 60900"						60912c	*/
+		}
+	else
+	/* "ELSE"								60912d	*/
+		CLOSE( file#);
+		/* "CLOSE X9%"							60912e	*/
+	OpenType[file#]= CLOSED_MODE;	/* mark this slot "closed/avaiable"		*/
+	/* "SY%(X9%,1)= 0"							60916	*/
+	/* "RETURN"								60918	*/
+
+DiskPutc( c$, file#) {		/* disk portion of putc(), 
+	VA$(0), VA%(0)			for both "p" and "a" modes			*/
+	/* "X5%= VA%(0): X9$= VA$(0)"							*/
+	if (OpenType[file#] == APPEND_MODE {
+	/* "IF SY%(X5%,1) == 6 THEN"
+		for (p= 1; p <= LEN( c$); p++)
+		/* "FOR X4%= 1 TO LEN( X9$):						*/
+			Append( c$[p], file#);
+			/* VA$(0)= MID$( X9$, X4%, 1): GOSUB 2500: NEXT"		*/
+			}
+	else {
+	/* "ELSE" -- "P" mode								*/
+		PRINT# file#, c$;
+		/* "PRINT# VA%(0), VA$(0);"						*/
+		}
+
+/*
+	Base Support Routines
+	+++++++++++++++++++++
+*/
+
+Append( c$, 	file#) {	/* append 1 char/byte to file#; used by putc()		*/
+/*	VA$(0), VA%(0)									*/
+	/* "X8%= VA%(0): X7%= SY%(X8%,2):"					2500a	*/
+	FIELD file#, CharPos[file#] AS Spacer$, 1 AS Char$;
+	/* "FIELD X8%, X7% AS X7$; 1 AS X9$:"					2500b	*/
+	LSET Char$= c$;
+	/* "LSET X9$= VA$(0)"							2500c	*/
+	CharPos[file#}++;
+	/* "SY%(X8%,2)= X7%+1:"							2502a	*/
+	TotalCharCount[file#]++;
+	/* "SY!(X8%,2)= SY!(X8%,2) + 1"						2502b	*/
+	if CharPos[file#] == RECORD_END {
+	/* "IF SY%(X8%,2) < 256 RETURN"						2504	*/
+		PUT file#, RecordCount[file#];
+		/* "X8!= SY!(X8,1): PUT X8%,X8!:"				2506a	*/
+		RecordCount[file#]++;
+		/* "SY!(X8%,1)= X8! + 1:"					2506b	*/
+		CharPos[file#]= 0;
+		/* "SY%(X8%,2)= 0:"						2506c	*/
+		}
+	/* "RETURN"								2506d	*/
+	}
+
+
+DefaultFileParams( file#, mode#) {	/* Set up default disk file parameters
+		   VA%(0), VA%(1)		when opening in "G" mode		*/
+	OpenType[file#]= mode#;
+	/* "SY%(X9%,1)= X9%:"							60700a	*/
+	CurrentCharCount[file#]= 0;
+	/* "SY!(X9%,0)= 0:"							60700b	*/
+	TotalCharCount[file#]= TotalBytes( file#);
+	/* "SY!(X9%,2)= FN DX!( X9%):"						60700c	*/
+	ResetDiskBuffer( file#);
+	/* "GOSUB 60810"							60700d	*/
+	Result= Success;
+	/* "VR%(0)=-1:"								60790a	*/
+	}
+	/* "RETURN"								60790b	*/
+
+
+UpdateFileParams(file#,  ccc,	 rc) {
+/*		 VA%(0), VA!(5), VA!(6)		*/
+	CurrentCharCount[file#]= ccc;
+	RecordCount[file#]= rc;
+	/* "SY!(X9%,0)= VA!(5): SY!(X9%,1)= VA!(6)"				60750	*/
+	TotalCharCount[file#]= TotalBytes( file#);
+	/* "SY!(X9%,2)= FN DX!( X9%)"	*/
+	Result= SUCCESS;
+	/* "VR%(0)= -1"								60790	*/
+	}
+
+
+OutputOpen( file#) {	/* attempt to OPEN a file in "O" mode
+	    VA%(0)									*/
+	ErrorType$= "'O'UTPUT MODE: CAN'T OPEN";
+	/* 'VA$(6)= "'O'UTPUT MODE: CAN'T OPEN"'				60840	*/
+	OPEN "O", file#, filename$;
+	/* 'OPEN "O", VA%(0), VA$(0):'						60842a	*/
+	return SUCCESS;
+	/* "VR%(0)= -1: RETURN"
+	ERROR RESUME HERE:							60842b	*/
+	/* error resume line:	*/
+	return FAIL;
+	/* "VR%(0)= 0: RETURN"							60844	*/
+	}
+	
+
+AppendOpen( file#, filename$) {	/* set up default file params for an "A"ppend OPEN v2
+	    VA%(0) VA$(0)								*/
+	ErrorType$= "'A'PPEND MODE: CAN'T OPEN";
+	/* 'VA$6)= "'A'PPEND MODE: CAN'T OPEN"'					60830	*/
+	if (ERROR( OPEN "R", file#, filename$))
+	/* 'OPEN "R", X9%, VA$(0): GOTO 60834"					60832	*/
+		return FAIL;
+		/* "VR%(0)= 0: RETURN' FILE NOT FOUND: ERROR EXIT"		60833	*/
+	if (tcc= TotalBytes( file#) > 0) {
+	/* "X7!= FN DX!( X9%): IF X7! = 0 THEN 60836"				60834	*/
+		/* existing non-empty file	*/
+		tcc++;	/* bump past current last char/byte in file	*/
+		"X7!= X7! + 1:"							60835a	*/
+		OpenType[file#]= APPEND_MODE;
+		/* "SY%(X9%,1)= 6:"						60835b	*/
+		TotalCharCount[file#]= tcc;
+		/* "SY!(X9%,2)= X7!"						60835c	*/
+		CurrentCharCount[file#]= tcc;
+		/* "SY!(X9%,0)= X7!"						60835d	*/
+		ConvertCharCount( tcc);
+		/* "VA!(0)= X7!: GOSUB 1910:"				1910 <-	60835e	*/
+		RecordCount[file#]= VR!(0);
+		/* "SY!(X9%,1)= VR!(0):"					60835f	*/
+		CharPos[file#]= VR%(2);
+		/* "SY%(X9%,2)= VR%(2):"					60835g	*/
+		GET file#, RecordCount[file#];
+		/* "GET X9%, SY!(X9%,1):"					60835h	*/
+		}
+		/* "GOTO 60839"							60835i	*/
+	else {
+		/* empty file: open "O" instead	*/
+		CLOSE file#;
+		/* "CLOSE X9%:"							60836a	*/
+		if ERROR( OPEN "O", file#, filename$))
+		/* 'OPEN "O", X9%, VA$(0): GOTO 60838"				60836b	*/
+			return FAIL;
+			/* "GOTO 60833' ERROR EXIT"				60837	*/
+		OpenType[file#]= OUTPUT_MODE;
+		/* "SY%(X9%,1)= 2:"						60838a	*/
+		CurrentCharCount[file#]= 0;
+		/* "SY!(X9%,0)= 0:"						60838b	*/
+		RecordCount[file#]= 1;
+		/* "SY!(X9%,1)=1:"						60838c	*/
+		TotalCharCount[file#]= 0;
+		/* "SY!(X9%,2)= 0:"						60838d	*/
+		ResetDiskBuffer();
+		/* "GOSUB 60810"					60810<-	60838e	*/
+		}		
+	VR%(1)= file#;
+	/* "VR%(1)= X9%:"							60839a	*/
+	return SUCCESS;
+	/* "VR%(0)= -1:"							60839b	*/
+	}
+	/* "RETURN"								60839c	*/
+
+
+AppendClose( file#) {	/* update file#'s DCB, then CLOSE file#				*/
+/*		VA%(0)									*/
+	PUT file#, RecordCount[file#];
+	/* "X8%= VA%(0): PUT X8%, SY!(X8%,1):"					60900a	*/
+	ConvertCharCount( TotalCharCount[file#]);
+	/* "VA!(0)= SY!(X8%,2): GOSUB 1910"					60900b	*/
+	POKE EndByteLastRec( file#), Offset;		/* "Offset" is VR%(2)		*/
+	/* "POKE FN DL%( X8%), VR%(2)"						60902a	*/
+	WordPoke( EndRecAddr( file#), RealAddrToSigned( RecordNo));
+							/* "RecordNo" is VR!(0)		*/
+	/* "VA!(0)= FN DE!( X8%): VA!(1)= FN SI%( VR!(0)): GOSUB 9500		60902b	*/
+	CLOSE file#;
+	/* "CLOSE X8%: RETURN"							60908	*/
+	}
+
+ConvertCharCount( CharCount) {	/* convert a file's total character count to
+		  VA!(0)	a) a Record # to	- GET
+							- PUT
+							- store in file's DCB
+				b) an offset in record for last byte to store in DCB
+				c) the size of the spacer field before the character to
+					append						*/
+	Result= CharCount != 0;	/*							*/
+	/* "VR%(0)= VA!(0) <> 0"						1910a	*/
+	if (!Result) {
+		RecordNo= 0;
+		Offset= 0;
+		CharPos= 0;
+		return;
+		}
+	/* "IF NOT VR%(0) THEN VR!(0)= 0: VR%(1)=0: VR%(2=0: RETURN"		1910b	*/
+	RecordNo= Block( CharCount, 256, 1, 1);
+	/* "VR!(0)= FN BL!( VA!(0), 256, 1, 1):"				1912	*/
+	Offset= mod( CharCount, 256);
+	/* "X5%= FN MD!( VA!(0), 256): VR%(1)= X5%"					*/
+	CharPos= Offset;
+	if (Offset == 0)
+		CharPos= 256;
+	/* "IF X5% = 0 THEN X5%= 256"							*/
+	Spacer= CharPos - 1;
+	/* "VR%(2)= X5% - 1: RETURN"						1916	*/
+	}
+
+Block( ItemCount, BlockSize, BlockOrigin, ItemOrigin) {	/* Returns Record# for
+				total ItemCount, based on
+					Record size
+					Record origin	[0/1]
+					Block origin	[0/1]				*/
+	return int( (ItemCount - ItemOrigin) / BlockSize) + BlockOrigin;
+	/* "DEF FN BL!( IC!, BS%, BO%, IO%)=
+		INT( (IC! - IO%) / BS%) + BO%"					64037	*/
+
+ResetDiskBuffer( file#) {	/* resets Disk Input Buffer for "G" & "A" modes	60810	*/
+/*		 VA%(0)		*/
+	Buffer$[file#]="";
+	/* 'SY$(X9%,1)= ""'							60810a	*/
+	CharPos[file#]= 256;
+	/* "SY%(x9%,2)= 256"							60810b	*/
+	}
+
+
+ResetKeyboard() {	/* reset Keyboard Input Buffer after newline in getc()		*/
+	Buffer$[0]= "";
+	CharPos[0]= 1;
+	/* 'SY$(0,1)= "": SY%(0,2)= 1"						60800	*/
+	}
+
+
+/*
+	File System Base Support DEF Functions
+	++++++++++++++++++++++++++++++++++++++
+*/
+
+StreamTranslate( StreamCode) {	/* translates "raw" Stream Code into stream handle	*/
+	if (StreamCode > 99)						/*	64040	*/
+		Slot= StdSlot[ Int( StreamCode / 100)]
+	else
+		Slot= StreamCode;
+	/* "DEF FN ST%( SL%)= ABS(SL% > 99) * SY%(ABS( INT( SL% / 100)),0) + 
+		ABS( SL% < 100) * SL%"	*/
+	return StreamCode;
+	}
+
+
+/*
+	File Access Support
+	...................
+*/
+
+IsValidOpenMode( mode#) {	/* T if mode# is a subscript of "IORGPA" [1..6]		*/
+	return (mode# > 0) && (mode# < 7);	/* ie, 1..6			64038	*/
+	/* "DEF FN DF%( M%)= M% > 0 AND M% < 7"	*/
+	}
+
+
+MaxOpenFiles() {	/* Return max # of OPEN files (answer to FILES?_ prompt)	*/
+	return PEEK( 0x408E);
+	/* "DEF FN DN%( X)= PEEK( &H408E)"					64034	*/
+	}
+
+
+/*
+	File Content Support
+	....................
+*/
+
+TotalBytes( file#) {	/* returns total byte count of file#			64036	*/
+/*	    VA%(0)	*/
+	return CharOffset( file#) + 256 * (EndRec( file#) - 1);
+	/* "DEF FN DX!( F%)= FN DQ%( F%) + 256 * (FNDE!( F%) - 1)"	*/
+	}
+
+
+EndRec( file#) {	/* Returns last record # for file#, as single-precision		*/
+	return WordPeek( EndRecAddr( file#));
+	/* "DEF FN DE!( F%)= FN WP!( FN DE%( F%))"				64036	*/
+	}
+
+
+CharOffset( file#) {	/* Translates PEEK( EndByteLastRec( file#)) so that a
+				return value of 0 becomes 256. Returns exact #
+				of bytes of last record in file#.			*/
+	if PEEK( EndByteLastRec( file#)) == 0
+		return 256
+	else
+		return PEEK( EndByteLastRec( file#));
+	/* "DEF FN DQ%( F%)= 
+		((PEEK( FN DL%( F%)) = 0) * -256) + 
+		(NOT PEEK( FN DL%( F%)) = 0) * -PEEK( FN DL%( F%))"		64036	*/
+
+
+/*
+	DCB Address Support
+	...................
+*/
+
+EndRecAddr( file#) {	/* address of "ERN (ending record no. - last in file -
+				lsb/msb)" (TRSDOS p6-6) in DCB for file#	64032	*/
+	return DCBbase( file#) + 12;
+	/* "DEF FN DE%( F%)= FN DB%( F%) + 12"	*/
+	}	
+
+
+EndByteLastRec( file#) {	/* address of "EOF offset of last delimiter in last
+					physical rexord" (TRSDOS p6-6) in DCB for
+					file#					64032	*/
+	return DCBbase( file#) + 8;	
+	/* "DEF FN DL%( F%)= FN DB%( F%) + 8"		*/
+	}
+
+
+DCBbase( file#) {	/* Returns base address of DCB (Disk Control Block)
+				for file#					64032	*/
+	return DCB_START + DCB_SIZE * (file# - 1);
+	/* "DEF FN DB%( F%)= FN D0%( 0) + FN D1%( 0) * (F% - 1)"			*/
+	}
+
+
+/*
+	String Scanning
+	===============
+
+	User Routines
+	+++++++++++++
+*/
+
+NextToken( Line$) {	/* return "Token" consisting of string of non-whitespace chars	*/
+/*	   VA$(0)			*/
+	SkipWS( Line$);
+	/* "GOSUB 5500"								5600	*/
+	if (MoreToScan) {
+	/* "IF NOT SY%(11,0) THEN 5680"	*/
+		/* The BASIC code here just "falls into" line 5610, ie, GetToken()	*/
+		Result$= "";
+		/* 'VR$(0)= ""'							5610	*/
+		ScanResult= FAIL;
+		/* "SY%(12,0)= 0"	*/
+		GetBasicToken( Line$, WhiteSpace);	/* WS set in SkipWS()		*/
+		if ScanResult {
+		/* "IF SY%(12,0) THEN"	*/
+			Result$= MID$( Line$, CurrentCursor, SelectionLength);
+			/* "VR$(0)= MID$( VA$(0), SY%(13,0), SY%(15,0))"	*/
+			}
+	UpdateCursor();
+	/* "GOSUB 5140"								5680	*/
+	}
+
+GetToken( Line$, CharSet) {	/* returns "Token" consisting of string of chars
+	  VA$(0), VA$(1)		not matching any member of CharSet	5610	*/
+		Result$= "";
+		/* 'VR$(0)= ""'							5610	*/
+		ScanResult= FAIL;
+		/* "SY%(12,0)= 0"	*/
+		GetBasicToken( Line$, CharSet);
+		/* (actually coded with line 5610)					*/
+		if ScanResult {
+		/* "IF SY%(12,0) THEN"	*/
+			Result$= MID$( Line$, CurrentCursor, SelectionLength);
+			/* "VR$(0)= MID$( VA$(0), SY%(13,0), SY%(15,0))"		*/
+			}
+		}
+	UpdateCursor();
+	/* "GOSUB 5140"								5680	*/
+	}
+
+
+GetBasicToken( Line$, CharSet) {	/* Support Routine for NextToken(),
+		VA$(0), VA$(1)					GetToken()	in 5610	*/
+	RecoverArgsFromSSVs();
+	/* "GOSUB 5120"		*/
+	GatherUntil( CharSet, Line$);
+	/* "GOSUB 5050"		*/
+	SaveCurrentArgsAndReturns();
+	/* "GOSUB 5100"		*/
+	}
+
+
+SkipWS( Line$) {	/* Move scanning cursor past any whitespace.		5500	*/
+/*	VA$(0)		*/
+	GatherUntil( WhiteSpace(), Line$);
+	/* "VA$(1)= FN WS$( 0): GOSUB 5120"	*/
+	SkipWhile( WhiteSpace(), Line$);
+	/* "GOSUB 5020"				*/
+	SaveCurrentArgsAndReturns();
+	/* "GOSUB 5100"				*/
+	}
+
+
+ScanArgv( Set) {	/* Scan Argv[] for occurence of member in Set		64600	*/
+/*	  VA$(0)	*/
+	Result= FAIL;
+	/* "VR%(0)= 0"	*/
+	Index= 1;
+	/* "VR%(1)= 1"	*/
+	if argc != 0 {
+	/* "IF SY%(0,0) = 0 RETURN"		*/
+		for (Index= 1 to argc; ; Index++) {
+		/* "FOR X9%= 1 TO SY%(0,0)"					64610	*/
+			if INSTR( Set, argv[Index]) > 0 {
+			/* "IF INSTR( VA$(0), AV$(X9%)) > 0 THEN"		64620	*/
+				Result= SUCCESS;
+				/* "VR%(0)= -1"	*/
+				return Index;
+				/* "VR%(1)= X9%"*/
+				}
+			}
+		}
+	}
+
+
+SkipWhile( Line$, Set) {	/* Move scanning cursor while any char in Set	5030
+	   VA$(0), VA$(1)	*/
+	Match= false;
+	/* "VA%(2)= 0"		*/
+	BasicScan( Line$, Set, Match);
+	/* "GOSUB 5000"								5022	*/
+	UpdateCursorInArgList();
+	/* "GOSUB 5142"		*/
+	MoreToScanQ();
+	/* "GOSUB 5180"		*/
+	return MoreToScan;
+	/* [in 	VR%(1)]		*/
+	}
+
+
+SkipUntil( Line$, Set) {	/* Move scanning cursor until any char in Set	5030
+	   VA$(0), VA$(1)	*/
+	Match= true;
+	/* "VA%(2)= -1: GOTO 5022"		*/
+	BasicScan( Line$, Set, Match);
+	/* "GOSUB 5000"								5022	*/
+	UpdateCursorInArgList();
+	/* "GOSUB 5142"		*/
+	MoreToScanQ();
+	/* "GOSUB 5180"		*/
+	return MoreToScan;
+	/* [in 	VR%(1)]		*/
+	}
+
+
+GatherWhile( Line$, Set) {	/* Returns length of string whose contents match Set
+	     VA$(0), VA$(1)							5050	*/
+	Match= false;
+	/* "VA%(2)=0"		*/
+	SelectionLength= BasicScan( Line$, Set, Match);
+	/* "GOSUB 5000"								5042	*/
+	Result= SelectionLength > 0;
+	/* "VR%(0)= VR%(2) > 0"	*/
+	}
+
+
+GatherUntil( Line$, Set) {	/* Returns length of string whose contents do not
+	     VA$(0), VA$(1)		match Set				5050	*/
+	Match= true;
+	/* "VA%(2)=-1: GOTO 5042"	*/
+	SelectionLength= BasicScan( Line$, Set, Match);
+	/* "GOSUB 5000"								5042	*/
+	Result= SelectionLength > 0;
+	/* "VR%(0)= VR%(2) > 0"	*/
+	}
+
+
+MoreToScanQ( Line$, Set) {		/* Returns "more to scan" result in SY%(11,0)	
+	     VA$(0), VA$(1)							5180	*/
+	MoreToScan= CurrentCursor < LEN( Line$);	/* Common case			*/
+	/* "SY%(11,0)= SY%(13,0) < LEN( VA$(0))"					*/
+	if !MoreToScan {				/* If at last char in Line$,
+								confirm no match	*/
+	/* "IF NOT SY%(11,0) THEN"							*/
+		MoreToScan= !(INSTR( Set, MID$( Line$, CurrentCursor, 1) > 0);
+		/* "SY%(11,0)= NOT( INSTR( VA$(1), MID$( VA$(0), SY%(13,0), 1) > 0)"	*/
+	}	
+	
+
+ReturnGathered&UpdateCurrentCursor&SaveSSVs(Line$, CurrentCursor, SelectionLength) {
+/*					    VA$(0), VA%(0),	  VR%(2)		*/
+	/* Combines ReturnGathered(), UpdateCursor(), & SaveCurrentArgs&Returns()	*/
+	ReturnGathered&UpdateCurrentCursor();
+	/* "GOSUB 5402"								5410	*/
+	SaveCurrentArgsAndReturns();
+	/* "GOSUB 5100"				*/
+	}
+
+	
+ReturnGathered&UpdateCurrentCursor(Line$, CurrentCursor, SelectionLength) {
+/*				   VA$(0), VA%(0),	  VR%(2)			*/
+	/* Combines ReturnGathered() and UpdateCursor()				5402	*/
+	ReturnGathered( Line$, CurrentCursor, SelectionLength);
+	/* "GOSUB 5400"	*/
+	UpdateCursorInArgList();
+	/* "GOSUB 5142"	*/
+	}
+
+
+ReturnGathered( Line$, CurrentCursor, SelectionLength) {
+/*		VA$(0), VA%(0),	  	VR%(2)						*/
+	/* After GatherWhile() or GatherUntil(), return selected substring	5400	*/
+	return MID$( Line$, CurrentCursor, SelectionLength);
+	/* "VR$(0)= MID$( VA$(0), VA%(0), VR%(2))"	*/
+	}
+
+
+BasicScan( Line$, Set,    MatchFlag) {	/* Basic Scanning Routine used by
+	  VA$(0), VA$(1), VA%(2)		SkipWhile(), SkipUntil(),
+						GatherWhile(), & GatherUntil()	5000	*/
+	Result= FAIL;
+	/* "VR%(0)= 0"			*/
+	SelectionLength= 0;
+	/* "VR%(2)= 0"			*/
+	for (Index= CurrentCursor; CurrentCursor <= UpTo; Index++) {
+	/* "FOR X9%= VA%(0) TO VA%(1)"	*/
+		if xor( MatchFlag, INSTR( Set, MID$( Line$, Index, 1)) > 0) {
+		/* "IF FN XR%( VA%(2), INSTR( VA$(1), MID$( VA$(0), X9%, 1)) > 0) THEN"	*/
+			SelectionLength++;
+			/* "VR%(2)= VR%(2) + 1: NEXT"		*/
+			}
+		else
+			break;
+		}
+	MoreToScan= !(( CurrentCursor + SelectionLength ) > LEN( Line$));
+	/* "VR%(1)= NOT ( VA%(0) + VR%(2) > LEN(VA$(0)) )"			5002	*/
+	}
+
+
+/*
+	Mandatory Support Routines
+	++++++++++++++++++++++++++
+*/
+
+InitScanString( Line$) {	/* Initializes SSVs (Scan State Variables) per Line$	*/
+/*		VA$(0)								5160	*/
+	UpTo= LEN( Line$);
+	/* "SY%(14,0)= LEN( VA$(0))"	*/
+	MoreToScan= UpTo > 0;
+	/* "SY%(11,0)= SY%(14,0) > 0"	*/
+	CurrentCursor= ABS( MoreToScan);
+	/* "SY%(13,0)= ABS( SY%(11,0))"	*/
+	RecoverArgsFromSSVs();
+	/* "GOSUB 5120"			*/
+	}
+
+
+/*
+	Base Support Routines
+	+++++++++++++++++++++
+*/
+
+UpdateCursor() {		/* Moves CurrentCursor to new position after scan	*/
+	CurrentCursor+= SelectionLength;
+	/* "SY%(13,0)= SY%(13,0) + SY%(15,0)"					5140	*/
+	}
+
+
+UpdateCursorInArgList() {	/* Moves CurrentCursor in VA%(0) to new position
+					after scan. Also see "UpdateCursor()", above	*/
+	CurrentCursor+= SelectionLength;
+	/* "VA%(0)= VA%(0) + VR%(2)"						5142	*/
+	}
+
+
+RecoverArgsFromSSVs() {	/* Copy	CC%	SY%(13,0) to	VA%(0)
+				UT%	SY%(14,0) to 	VA%(1)				*/
+	/* copy Scan State Variables to Argument List for String Scanning	5120	*/
+	/* see "SaveCurrentArgsAndReturns()", below.					*/
+	/* "FOR X9%= 0 TO 1: VA%(X9%)= SY%(13 + X9%,0): NEXT"				*/
+	}
+
+
+SaveCurrentArgsAndReturns()	/* Copy	CC%	VA%(0) to	SY%(13,0)
+					UT%	VA%(1) to	SY%(14,0)
+					SC%	VR%(0) to	SY%(12,0)
+					MR%	VR%(1) to	SY%(11,0)
+					SL%	VR%(2) to	SY%(15,0)	5100	*/
+	/* copy Argument & Return List to Scan State Variables after String Scanning	*/
+	/* see "RecoverArgsFromSSVs()", above.						*/
+	/* "	SY%(13,0)= VA%(0):
+		SY%(14,0)= VA%(1):
+		SY%(12,0)= VR%(0):
+		SY%(11,0)= VR%(1):
+		SY%(15,0)= VR%(2)"
+	*/
+	}
+
+
+SaveSSVs() {	/*	Using SY%(0,3) as "SP" (stack pointer), save	
+				SY%(11,0) [MR%] to	SY%((SP-1)*5+1,3)
+				SY%(12,0) [SC%] to	SY%((SP-1)*5+2,3)
+				SY%(13,0) [CC%] to	SY%((SP-1)*5+3,3)
+				SY%(14,0) [UT%] to	SY%((SP-1)*5+4,3)
+				SY%(15,0) [SL%] to	SY%((SP-1)*5+5,3)
+				VA$(0)	[SR$]	to	SY$(SP,2)
+				VA$(1)	[CS$]	to	SY$(SP+3,2)
+										5200	*/
+		/* Only "pushes" a maximum of 3 sets. Will not try to save more.	*/
+	if StackPointer > 2
+		return;
+		/* "X5%= SY%(0,3): IF X5% > 2 THEN RETURN"				*/
+	CalcOffset();
+	/* "GOSUB 5290"								5202	*/
+	for (i= 1; i <= 5; i++) {
+	/* "FOR X4%= 1 TO 5"							5204	*/
+		/* "SY%(X6% + X4%,3)= SY%(10 + X4%,0)"					*/
+		}
+	/* "SY$(X5%,2)= VA$(0)"							5206	*/
+	StackPointer++;
+	/* "SY%(0,3)=X5% + 1"							5207	*/
+	}
+
+
+RestoreSSVs() {	/*	Using SY%(0,3) as "SP" (stack pointer), restore
+				SY%(11,0) [MR%] from	SY%((SP-1)*5+1,3)
+				SY%(12,0) [SC%] from	SY%((SP-1)*5+2,3)
+				SY%(13,0) [CC%] from	SY%((SP-1)*5+3,3)
+				SY%(14,0) [UT%] from	SY%((SP-1)*5+4,3)
+				SY%(15,0) [SL%] from	SY%((SP-1)*5+5,3)
+				VA$(0)	[SR$]	from	SY$(SP,2)
+				VA$(1)	[CS$]	from	SY$(SP+3,2)
+										5250	*/
+	StackPointer--;
+	/* "X5%= SY%(0,3) - 1"
+	if StackPointer < 0
+		return;
+	CalcOffset();
+	/* "GOSUB 5290"								5252	*/
+	for (i= 1; i <= 5; i++) {
+	/* "FOR X4%= 1 TO 5"							5254	*/
+		/* "SY%(10 + X4%,0)=SY%(X6% + X4%,3)"
+		}
+	/* "VA$(0)= SY$(X5%,2)"							5256	*/
+	}
+
+
+CalcOffset() {	/*	Calculate offset to save & restore SSVs			5290	*/
+		/*	(helper routine to locate "stack frame")			*/
+	/* "X6%= X5% * 5"	*/
+	}
+
+
+/*
+	String Scanning DEF FNs
+	+++++++++++++++++++++++
+*/
+
+Alphabetic()	{	/* Returns alpha character set				64006	*/
+	return Uppercase() + Lowercase();
+	/* "DEF FN AL$( X)= FN UC$( 0) + FN LC$( 0)"	*/
+	}
+
+
+AlphaNumeric()	{	/* Returns alphanumeric character set			64006	*/	
+	return Alphabetic() + Numeric();
+	/* "DEF FN AN$( X)=FN AL$( 0)+FN NM$( 0)"	*/
+	}
+
+
+Lowercase()	{	/* Returns lowercase character set			64006	*/
+	return SY$[10,0];
+	/* "DEF FN LC$( X)= SY$(10,0)"		[lc set stored in SY$(10,0)]		*/
+	}
+
+
+Numeric() {		/*Returns numeric character set				64006	*/
+	return SY$[8,0];
+	/* "DEF FN NM$( X)= SY$(8,0)"		[numeric set stored in SY$(8,0)]		*/
+	}
+
+
+Uppercase() {		/* Returns uppercase character set			64006	*/
+	return SY$[9,0];
+	/* "DEF FN UC$( X)= SY$(9,0)"		[uc set stored in SY$(9,0)]		*/
+	}
+
+UserDefined() {		/*  User-defined character set: anything in SY$(14,0)	64006	*/
+	return SY$[14,0];
+	/* "DEF FN US$( X)= SY$(14,0)"							*/
+	}
+
+
+WhiteSpace() {		/* Returns whitespace character set			64006	*/
+	return SY$[11,0];
+	/* "DEF FN WS$( X)= SY$(11,0)"		[whitespace set in SY$(11,0)]		*/
+	}
+
+
+/*
+	String Formatting
+	=================
+*/
+
+Fmt_Num( Width, Num) {		/* Right-justify Num in Width field, and
+	 VA!(0),				return formatted string		5800
+		VA%(0)		*/
+	Num$= RemoveLeadingBlankFromNum( STR$( Num));
+	/* "X9$= FNNP$( STR$( VA!(0)))"				*/
+	Field$= STRING$( max( LEN( Num$), Width), " ");
+	/* "VR$(0)= STRING$( FNMX%( LEN( X9$), VA%(1)), 32)"	*/
+	RSET Field$= Num$;
+	/* "RSET VR$(0)= X9$"
+	return Field$;
+	}
+
+
+/*
+	String Formatting DEF FNs
+	+++++++++++++++++++++++++
+
+*/
+
+RemoveLeadingBlankFromNum( num$) {	/* S$ is a number converted using STR$().
+			   			If it is positive, it will begin with
+						a leading blank. This function removes
+						that blank for formatting purposes.
+						num$ will either look like "-nnnn" or
+						like " nnnn".			64018	*/
+	/*
+	pos= 2;				/* index into num$				*/
+	if LEFT$( num$, 1) == "-" {
+		/* it's a negative number: 	start at MID$( num$, 1...		*/
+		pos= pos - 1;
+		/* otherwise:			start at MID$( num$, 2...		*/
+		}
+	return MID$( num$, pos, LEN( num$));
+
+	/* the actual BASIC function is coded like this:
+	return MID$( num$,
+			2 +
+			(LEFT$( num$, 1) == "-"),	ie, 2 + either a 0 or a -1
+				LEN( num$));						*/
+	/* ie,
+	"DEF FN NP$( S$)= MID$( S$, 2+((LEFT$( S$, 1)) = "-"), LEN( S$))"		*/
+}
+
+
+toUpper( char) {	/* comverts all alpha ASCII char to uppercase. Returns all other
+				ASCII unchanged.				64000	*/
+	return char + 32 * CharLowerCaseQ( char);	
+	/* "DEF FN TU%( C%)= C% +32 * FN CL%( C%)"					*/
+	}
+
+
+CharLowerCaseQ( char) {	/* returns T (-1) if char is lowercase			64000	*/
+	return char > 0x060 && char < 0x078;
+	/* "DEF FN CL%( C%)= C% > &H60 AND C% < &H78"					*/
+	}
+
+
+/*
+	Memory
+	======
+
+WordPoke( addr,   val) { /* POKE individual LO and HI parts of unsigned int "val"
+				at unsigned int "addr" & "addr" + 1			*/
+/*	  VA!(0), VA!(1)							9500	*/
+	base= RealAddrToSigned( addr - 1);
+	/* "X5%= FN SI%( VA!(0) - 1):"						9500a	*/
+	val$= MKI$( RealAddrToSigned( val));
+	/* "X5$= MKI$( FN SI%( VA!(1))"						9500b	*/
+	for (a= 1; a < 3; a++) {
+	/* "FOR X4%= 1 TO 2:"							9502a	*/
+		POKE base + a),	ASC( MID$( val$, a, 1));
+		/* "POKE X5% + X4%, ASC( MID$( X5$, X4%, 1)):"			9502b	*/
+		}
+		/* "NEXT:"							9502c	*/
+	}
+	/* "RETURN"								9502d	*/
+
+
+	Memory DEF FNs
+	++++++++++++++
+
+	Address Functions
+	.................
+*/
+
+WordPeek( addr) {	/* Returns unsigned 16-bit value at addr, addr + 1	64016	*/
+	return SignedIntAddrToReal( SingleWord( PEEK( addr), PEEK( addr + 1)));
+	/* "DEF FN WP!( A%)= FN IS!( FN SW%( PEEK( A%), PEEK( A% + 1)))"		*/
+	}
+
+
+HighByte( word) {	/* Returns high-order byte of 16-bit word! Works with
+			signed (BASIC) integers and "real" (unsigned) addresses.	*/
+	return INT( SignedIntAddrToReal( word) / 256);
+	/* "DEF FN HB%( W!)= INT( FNIS!( W!) / 256)"				64014	*/
+	}
+
+
+LowByte( word) { 	/* Returns low-order byte of 16-bit word! Works with
+			signed (BASIC) integers and "real" (unsigned) addresses.	*/
+	return mod( SignedIntAddrToReal( word), 256);
+	/* "DEF FN LB%( W!)= FN MD!( FN IS!( W!), 256)"				64014	*/
+	}
+
+
+SignedIntAddrToReal( intval) {	/* Returns single-precision real address
+				(ie, "65535") from BASIC signed integer address
+				(ie, "-1")					64012	*/
+	if intval < 0
+		return 65536 + intval
+	else
+		return intval;
+	/* "DEF FN IS!( I%)= (I% < 0) * -(65536 + I%) + (NOT I% < 0) * -I%"		*/
+	}
+
+
+RealAddrToSigned( addr) {	/* Converts single-precision real address (ie, "65535")
+					to BASIC signed integer address (ie, "-1")	*/
+	if addr > 32767							*/	64012	*/
+		return addr - 65536
+	else
+		return addr;
+	/* "DEF FN SI%( S!)= -((S! > 32767) * (S! - 65536)) - ((S! < 32768) * S!)"	*/
+	}
+
+
+SingleWord( byte_lo, byte_hi) {	/* Combines byte_lo% and byte_hi% into a
+				BASIC signed integer				64014	*/
+	return CVI( CHR$( byte_lo) + CHR$( byte_hi));
+	/* "DEF FN SW%( BL%, BH%)= CVI( CHR$( BL%) + CHR$( BH%))"			*/
+	}
+
+
+/*
+	Usage & Error Reporting
+	=======================
+*/
+
+Usage() {	/* If user has specified any one of these options:
+			-H --H -? --? -USAGE --USAGE
+			print command usage help on stderr;
+			and if SY%(6,0) set (default), then exit		64900	*/
+	if ScanArgv( "-H --H -? --? -USAGE --USAGE") {
+	/* "GOSUB 64600: IF VR%(0) = 0 RETURN"	*/
+		READ Err$;
+		while Err$ != "." {
+			PutErr( Err$);
+			/* "GOSUB 65520"					64910	*/
+			}	/* "GOTO 64905"					64920	*/
+		if ExitAfterUsage {
+		/* "IF SY%(6,0) "	*/
+			ExitGracefully();
+			/* "THEN 59990' IF FLAGGED EXIT THIS PROGRAM GRACEFULLY	64940	*/
+			}
+		}
+	}
+
+
+fOpenErrorReport( filename$,  ErrorFunction$, ErrorType$) {
+/*		  VA$(0),	VA$(5),		VA$(6)					*/
+	/* Reports "ERROR", filename, "OPEN", file#, and returns FAIL			*/
+	e$= "ERROR: '" + filename$ + "'-" +
+		ErrorFunction$ + " " + ErrorType$ +
+		"IN" + STR$( file#);
+	/* 'VA$(10)= "ERROR: '" + VA$(0) + "'-" +
+		VA$(5) + " " + VA$(6) +
+		"IN" + STR$( X9%)'						60950	*/
+	Result= FAIL;
+	/* "VR%(0)= 0								60952	*/
+	PutErr( e$);
+	/* "GOSUB 65520"							60954	*/
+	}
+
+
+PutErr( e$) {		/* append newline to string e$ and write on stderr	65520
+	VA$(10)			*/
+	file#= StreamTranslate( STDERR);
+	/* "VA%(0)= FNST%( SY%(3,0)):"						65520a	*/
+	if (file# == 0)
+		file#= SCREEN;
+		/* "IF VA%(0) = 0 THEN VA%(0)= FN SC%(0)"			65520b	*/
+	putc( e$ + newline, file#);
+	/* "VA$(0)= VA$(10) + CHR$( 13): GOSUB 60100"				65522	*/
+	}
+
+
+/*
+	Usage & Error DEF FNs
+	+++++++++++++++++++++
+*/
+
+Argc() {	/* Returns "argc", the index of the last entry in argv[] {AV$()}.	*/
+	return argc;
+	/* DEF FN AC%( X)= SY%(0,0)"						64042	*/
+	}
+
+
+ManualErrorCode(error) {	/* Converts error code from BASIC's ERR function into
+				codes described in "TRS-DOS 2.3 pp7-77..7-78	64020	*/
+	return err / 2 + 1;
+	/* "DEF FN E4%( E%)= E% / 2 + 1"	*/
+	}
+
+
+/*
+	INITIALIZATION
+	++++++++++++++
+*/
+
+Initialization() {		/* Main Initialization Routine				*/
+	AllocationStringSpace( 500);
+	/* "SS%= 500"		Adjust SS% for larger string applications	65000	*/
+	/* "CLEAR SS%		Must be placed here as CLEAR empties the stack	65002	*/
+	#define	SystemSize 15
+	/* "X9%= 15"								65004	*/
+	struct System {
+		int 	SystemI[SystemSize, 3];
+		float	SystemF[SystemSize, 2];
+		string	System$[SystemSize, 2];
+		};
+	/* "DIM SY%(X9%,3), SY!(X9%,2), SY$(X9%,2)"				65006	*/
+	DebugLevel= 1;		/* test this level when debugging			*/
+	/* "D0= 1"								65008	*/
+	Initialize();		/* main Initialization loop				*/
+	/* "GOSUB 65050"						65050 <-65020	*/
+	Main();			/* user program						*/
+	/* "GOTO 40000"								65048	*/
+	fCloseAll();
+	/* "GOSUB 60910"							59990	*/
+	run( "sh");
+	/* 'RUN "SH/BAS"'							59995	*/
+	}
+
+Initialize() {			/* Initialization Scheduler			65050	*/
+	InitVals();
+	/* "GOSUB 65100"						65100 <-65050	*/
+	InitCmdLine();
+	/* "GOSUB 65150"						65150 <-65052	*/
+	InitUserPrgm();
+	/* "GOSUB 65200"						65200 <-65054	*/
+	InitStdFiles();
+	/* GOSUB 65250"							65250 <-65056	*/
+	OptionalPackages();
+	/* "GOSUB 65300"						65300 <-65058	*/
+	}
+	/* "RETURN"								65098	*/
+
+InitVals() {			/* Initialize Std devices; DEF FNs, I/O values,
+					Char Sets					*/
+	InitSSVs();
+	/* "GOSUB 60000"						60000 <-65100	*/
+	ResetKeyboard();
+	/* "GOSUB 60800"						60800 <-65102	*/
+	DefineFunctions();
+	/* "GOSUB 64000"						64000 <- 65104	*/
+	InitIOvals();
+	/* "GOSUB 64500"						64500 <- 65108	*/
+	InitCharSets();
+	/* "GOSUB 60020"						60020 <- 65112	*/
+	}
+	/* "RETURN"								65148	*/
+
+InitSSVs() {			/* Initialize Search State Variables			*/
+	MoreToScan= ScanResult= FAIL;
+	SelectionLength= 0;
+	/* "SY%(11,0)= 0: SY%(12,0)= 0: SY%(15,0)= 0:"				60000a	*/
+	CurrentCursor= UpTo= 1;
+	/* "SY%(13,0)= 1: SY%(14,0)= 1"						60000b	*/
+	}
+
+InitIOvals() {			/* Initialize IO values					*/
+	STDIN= KEYBOARD;
+	/* "SY%(1,0)= FNKY%(0):"						64500a	*/
+	STDOUT= SCREEN;
+	/* "SY%(2,0)= FNSC%(0):"						64500b	*/
+	STDERR= SCREEN;
+	/* "SY%(3,0)= FNSC%(0)"							64500c	*/
+	CommandLineFileName= "CMDLINE/SH";
+	/* "SY$(15,0)= "CMDLINE/SH"						64502	*/
+	NL$= newline$;
+	/* "SY$(4,0)= CHR$( 13):"						64504a	*/
+	KeyboardByteStreamEOF$= CHR$( 27);
+	/* "SY$(5,0)= CHR$( 27):"	[shift][UpArrow]			64504b	*/
+	KeyboardTextStreamEOF$= ".";
+	/* "SY$(6,0)= "."							64504c	*/
+	ExitAfterUsage= TRUE;
+	/* "SY%(6,0)= -1"							64506	*/
+	}
+	/* "RETURN"								65508	*/
+
+InitCharSets() {
+	Init1Set( 8, "0", "9");		/* Numerics					*/
+	/* VA%(0)= 8: VA$(0)= "0": VA$(1)= "9": GOSUB 60010"		60010 <-60020	*/
+	Init1Set( 9, "A", "Z");		/* Uppercase					*/
+	/* VA%(0)= 9: VA$(0)= "A": VA$(1)= "Z": GOSUB 60010"		60010 <-60022	*/
+	Init1Set( 10, "a", "z");	/* lowercase					*/
+	/* VA%(0)= 10: VA$(0)= "a": VA$(1)= "z": GOSUB 60010"		60020 <-60024	*/
+	Whitespace= " " + LF + newline$;
+	/* 'SY$(11,0)= " " + CHR$( 10) + FNNL$(0)'				60028	*/
+	}
+
+Init1Set( sub,	startchar$, endchar$) {	/* fill 1 char set				*/
+	int sc= startchar$, ec= endchar$;
+	/* "X5%= VA%(0): X7%= ASC( VA$(0)): X8%= ASC( VA$(1)):"			60010a	*/
+	setsize= ec - sc + 1;
+	/* "X6%= X8% - X7% + 1:"						60010b	*/
+	char currentset[ setsize]= " ";
+	/* allocate current set with setsize # of spaces				*/
+	/* "SY$(X5%,0)= STRING$( X6%, 32)"					60010d	*/
+	for (c= sc; c <= ec; c++)	{
+	/* "FOR X9%= X7% TO X8%: X6%= X9% - X7% + 1:"				60012a	*/
+		currentset[c]= (char) c;
+		/* "MID$( SY$(X5%,0), X6%, 1)= CHR$( X9%): NEXT"		60012b	*/
+	}
+	/* "RETURN"								60012c	*/
+
+InitCmdLine() {	/* Read CMDLINE/SH, parse command line & program name,
+			argc, argv[]							*/
+	/*
+		'1. TRY TO OPEN "CMDLINE/SH"'
+	*/
+	result= FAIL;
+	ErrorTrap( 65500);
+	/* "ON ERROR GOTO 65500"						65150	*/
+	Open( "I", 1, CommandLineFileName$);
+	/* 'OPEN "I", 1, SY$(15,0)'						65152	*/
+	/* "ON ERROR GOTO 0"	if any error other than "file not found", fail	65154	*/
+	/*
+		"2. IF CMDLINE FILE EXISTS"
+	*/
+	if (result == SUCCESS) 		/* ie, if unable to open "CMDLINE/SH"		*/
+	/* "IF VR%(0) THEN"							65156a	*/
+		return FAIL;
+		/* "VR%(0)= 0: RETURN ' NO IT DOESN'T"				65156b	*/
+	/*
+		"3. READ SY$(0..3,0)"
+	*/
+	for (line= 0; line <= 3; line++)
+	/* "FOR X9%= 0 TO 3:"							65158a	*/
+		fgets( ioStream$[line], RECORD_END, 1)
+		/* "INPUT #1, SY$(X9%,0): NEXT"					65158b	*/
+	fclose( 1);
+	/* "CLOSE #1"								65158c	*/
+	/*
+		"4. PARSE CMD LINE IN SY$(0..,0) INTO AV$(0..)
+			ARGC -> SY%(0,0)
+
+		4A. PROGRAM NAME -> AV$(0)"
+	*/
+	argc= 0;
+	/* "SY%(0,0)= 0:"							65160a	*/
+	if (!InitScanString( ioStream$[0]))
+	/* "VA$(0)= SY$(0,0): GOSUB 5160"					65160b	*/
+		return;			/* no command name or args to parse		*/
+		/* "IF NOT SY%(11,0) RETURN"					65160c	*/
+	if (!argv[0]= NextToken( ioStream$[0]))
+	/* "GOSUB 5600: IF NOT SY%(12,0)"					65161	*/
+		return;
+		/* "RETURN"								*/
+	/* "AV$(0)= VR$(0)"							65162	*/
+	/*
+		"4B. ARGS -> AV$(1..N)"
+	*/
+	while (arg$= NextToken( ioStream$[0]), ScanResult) {
+	/* "GOSUB 5600: IF NOT SY%(12,0) RETURN"			5600 <-	65170	*/
+		argc++;
+		/* "SY%(0,0)= SY%(0,0) + 1:"					65172a	*/
+		argv[argc]= arg$;
+		/* "AV$(SY%(0,0))= VR$(0):"					65172b	*/
+		if (!MoreToScan)
+			return;
+			/* "RETURN"						65174	*/
+		/* "IF SY%(11,0) THEN 65170"						*/
+		}
+	}
+
+InitStdFiles() {	/* redirect stdin, stdout, stderr				*/
+	result= FAIL;	/* default							*/
+	/* "VR%(0)= 0"								65250a	*/
+	for (stream= 1; stream <= 3; stream++) {
+	/* "FOR X7%= 1 TO 3:"							65250b	*/
+		if (LEN( ioStream$[stream]) > 0) {
+		/* "IF LEN( SY$(X7%,0)) < 1 THEN 65290"				65250c	*/
+			/* redirect std I/O						*/
+			if (stream == 1)	/* stdin				*/
+			/* "IF X7% = 1 THEN"					65252a	*/
+				getcIsByteStream= TRUE;
+				/* "SY%(4,0)= -1 ' DEFAULT BYTE-STREAM INPUT FOR
+							STDIN FILE"		65252b	*/
+			if (INSTR( ioStream$[stream], "-") > 0)
+			/* 'IF INSTR( SY$(X7%,0), "-") > 0 THEN"		65254a	*/
+				fd= VAL( ioStream$[stream])
+				/* "VR%(1)= VAL( SY$(X7%,0)): GOTO 65280"	65254b	*/
+			elseif ((fd= VAL( ioSteam$[stream])) > 99)) {	/* slot		*/
+				}		/*			reassigned	*/
+			
+			/* "X6%= VAL( SY$(X7%,0)): IF X6% > 99 THEN"		65255a	*/
+				/* "VR%(1)= X6%: GOTO 65280"			65255b	*/				
+			else {
+				filename$= ioStream$[stream];
+				mode$= MID$( "GPO", stream, 1);
+				/* 'VA$(1)= MID$( "GPO", X7%, 1):'		65256	*/
+				fd= 0;		/* have fOpen() assign file#		*/
+				/* "VA%(1)= 0: VA$(0)= SY$(X7%,0): VA%(0)=0"		*/
+				if (append_pos= INSTR( filename$, "+")) {
+				/* 'X9%= INSTR( VA$(0), "+"): IF X9% THEN'	65257	*/
+					/* Append mode?					*/
+					filename$= LEFT$( filename$, append_pos - 1);
+					/* "VA$(0)= LEFT$( VA$(0), X9% - 1):"		*/
+					mode$= "A";
+					/* 'VA$(1)= "A'					*/
+					}
+				fd= fOpen( filename$, mode$);
+				/* "GOSUB 60500"				65258	*/
+				}
+			StdSlot[stream]= fd;
+			/* "SY%(X7%,0)= VR%(1) ' ASSIGN FD# TO STD FILE#	65280	*/
+			}
+		}
+		/* "NEXT: RETURN"						65290	*/
+	}
